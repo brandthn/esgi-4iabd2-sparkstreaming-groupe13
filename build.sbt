@@ -1,49 +1,25 @@
-name := "NYC-Taxi-Spark-Streaming"
-version := "1.0"
+name := "projet-spark-streaming"
+version := "0.1.0"
 scalaVersion := "2.12.15"
 
-// Versions communes
-val sparkVersion = "3.3.2"
-val kafkaVersion = "3.3.1"
-val configVersion = "1.4.2"
-
-// Dépendances communes pour tous les composants
+// Dépendances du projet
 libraryDependencies ++= Seq(
-  "org.apache.spark" %% "spark-core" % sparkVersion % "provided",
-  "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
-  "com.typesafe" % "config" % configVersion
+  // Apache Spark
+  "org.apache.spark" %% "spark-core" % "3.3.2",
+  "org.apache.spark" %% "spark-sql" % "3.3.2",
+  
+  // Kafka
+  "org.apache.kafka" % "kafka-clients" % "3.3.1",
+  
+  // Configuration
+  "com.typesafe" % "config" % "1.4.2",
+  
+  // JSON4S (toutes les dépendances pour éviter les ClassNotFoundException)
+  "org.json4s" %% "json4s-core" % "3.7.0-M11",
+  "org.json4s" %% "json4s-ast" % "3.7.0-M11",
+  "org.json4s" %% "json4s-jackson" % "3.7.0-M11",
+  "org.json4s" %% "json4s-native" % "3.7.0-M11",
+  
+  // Logging
+  "ch.qos.logback" % "logback-classic" % "1.2.10"
 )
-
-// Sous-projet Producer
-lazy val producer = (project in file("producer"))
-  .settings(
-    name := "nyc-taxi-producer",
-    libraryDependencies ++= Seq(
-      "org.apache.kafka" % "kafka-clients" % kafkaVersion,
-      "org.apache.spark" %% "spark-sql-kafka-0-10" % sparkVersion
-    )
-  )
-
-// Sous-projet Consumer
-lazy val consumer = (project in file("consumer"))
-  .settings(
-    name := "nyc-taxi-consumer",
-    libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-streaming" % sparkVersion,
-      "org.apache.spark" %% "spark-sql-kafka-0-10" % sparkVersion,
-      "org.apache.spark" %% "spark-mllib" % sparkVersion
-    )
-  )
-
-// Sous-projet ML
-lazy val ml = (project in file("ml"))
-  .settings(
-    name := "nyc-taxi-ml",
-    libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-mllib" % sparkVersion
-    )
-  )
-
-// Projet principal qui agrège tous les sous-projets
-lazy val root = (project in file("."))
-  .aggregate(producer, consumer, ml)
