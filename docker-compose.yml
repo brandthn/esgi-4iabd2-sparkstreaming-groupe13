@@ -1,0 +1,48 @@
+version: '3'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.2
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - taxi-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.2
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - taxi-network
+
+  producer:
+    build: .
+    container_name: taxi-producer
+    depends_on:
+      - kafka
+    volumes:
+      - ./data:/app/data
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - TAXI_DATA_PATH=/app/data/yellow_tripdata_2023.csv
+      - SIMULATION_SPEED_FACTOR=100
+      - SIMULATION_BATCH_SIZE=1000
+    networks:
+      - taxi-network
+
+networks:
+  taxi-network:
+    driver: bridge
