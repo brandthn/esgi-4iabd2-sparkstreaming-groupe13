@@ -1,6 +1,7 @@
 ### 0. Clone le projet
 __git clone https://github.com/brandthn/esgi-4iabd2-sparkstreaming-groupe13.git__
-sur la branche main (ou autre selon préférence)
+
+=> sur la branche __main__ (ou autre selon préférence)
 
 ### I. Télécharger data Janvier-2025
 //Pour démo simple, diminuer la volumétrie de ce fichier pour juste avoir une mise en marche du projet
@@ -12,4 +13,4 @@ sur la branche main (ou autre selon préférence)
     -  __docker-compose up --build__
 
 ### Assurez-vous que les répertoires nécessaires existent:
-**mkdir -p data/streaming data/processed/raw data/processed/pickup_agg data/processed/dropoff_agg data/processed/combined_agg data/processed/checkpoints/raw data/debug**
+__mkdir -p data/streaming data/processed/raw data/processed/pickup_agg data/processed/dropoff_agg data/processed/combined_agg data/processed/checkpoints/raw data/debug__ (depuis la racine du projet)
