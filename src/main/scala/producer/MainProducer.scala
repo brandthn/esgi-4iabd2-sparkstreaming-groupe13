@@ -8,10 +8,7 @@ import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
-/**
- * Point d'entrée principal de l'application Producer
- * Responsable de l'orchestration du processus de streaming des données de taxis
- */
+
 object MainProducer {
   private val logger = LoggerFactory.getLogger(getClass)
 
@@ -28,7 +25,6 @@ object MainProducer {
     logger.info(s"Initializing Yellow Taxi Trip Producer with source: $sourceFile, " +
                 s"batch size: $batchSize, interval: $intervalSeconds seconds")
     
-    // Créer la session Spark avec configuration optimisée pour mémoire
     val spark = SparkSession.builder()
       .appName("YellowTaxiTripProducer")
       .master("local[*]")
@@ -39,11 +35,9 @@ object MainProducer {
       .getOrCreate()
     
     try {
-      // Initialiser les composants
       val dataOps = new ProducerOperations(spark, taxiConfig)
       val kafkaSender = new KafkaSender(taxiConfig.getConfig("kafka"))
       
-      // Charger et trier les données - mais en batches pour économiser la mémoire
       logger.info("Processing data in batches to save memory")
       
       // Définir le schéma manuellement pour éviter d'inférer le schéma (économise de la mémoire)
@@ -64,10 +58,8 @@ object MainProducer {
           counter += 1
           logger.info(s"Processing batch $counter of ${batches.length}")
           
-          // Convertir le batch en JSON
           val jsonMessages = dataOps.convertBatchToJson(batch)
           
-          // Envoyer à Kafka
           kafkaSender.sendJsonMessages(jsonMessages)
           
           // Nettoyage explicite pour libérer la mémoire
@@ -81,7 +73,6 @@ object MainProducer {
         }
       }
       
-      // Attendre la fin du traitement
       Await.result(processingFuture, Duration.Inf)
       
       // Nettoyage

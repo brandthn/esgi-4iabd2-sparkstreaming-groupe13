@@ -20,12 +20,12 @@ COPY project/build.properties project/plugins.sbt ./project/
 # Copier le code source
 COPY src ./src
 
-# Créer le dossier de données et debug
-RUN mkdir -p data/debug
+# Créer les répertoires pour les données traitées
+RUN mkdir -p data/processed/raw data/processed/pickup_agg data/processed/dropoff_agg data/processed/combined_agg
 
 # Compiler le code
 RUN sbt compile
 
-# Exécuter le Producer avec la syntaxe correcte
-CMD ["sh", "-c", "sbt --batch \"runMain producer.MainProducer\""]
-# CMD ["sbt", "runMain", "producer.MainProducer"]
+# Exécuter le Consumer avec la syntaxe correcte
+CMD ["sh", "-c", "sbt --batch \"runMain consumer.MainConsumer\""]
+# CMD ["sbt", "runMain", "consumer.MainConsumer"]

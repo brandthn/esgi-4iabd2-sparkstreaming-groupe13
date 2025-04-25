@@ -51,3 +51,29 @@ services:
       SBT_OPTS: "-Xmx4g -Xms2g"
     volumes:
       - ./data:/app/data
+
+  # Service Consumer Spark Streaming
+  spark-streaming-consumer:
+    build:
+      context: .
+      dockerfile: docker/spark-streaming/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      JAVA_OPTS: "-Dtaxi.consumer.kafka.brokers=kafka:9092 -Xmx4g -Xms2g"
+      SBT_OPTS: "-Xmx4g -Xms2g"
+    volumes:
+      - ./data:/app/data
+  
+  # Service Streamlit pour la visualisation
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/streamlit/Dockerfile
+    ports:
+      - "8501:8501"
+    depends_on:
+      - spark-streaming-consumer
+    volumes:
+      - ./data:/app/data

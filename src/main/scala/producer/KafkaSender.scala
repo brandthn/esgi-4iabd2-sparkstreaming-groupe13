@@ -6,6 +6,7 @@ import org.apache.kafka.common.serialization.StringSerializer
 import org.slf4j.LoggerFactory
 
 import java.util.Properties
+import java.io.{File, PrintWriter}
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -16,6 +17,14 @@ class KafkaSender(config: Config) {
   
   private val topic = config.getString("topic")
   private val brokers = config.getString("brokers")
+  
+  // Configuration pour déboguer les batchs (ajout)
+  private val debugEnabled = if (config.hasPath("debugOutput.enabled")) 
+    config.getBoolean("debugOutput.enabled") else false
+  private val debugOutputFile = if (debugEnabled && config.hasPath("debugOutput.file")) 
+    Some(config.getString("debugOutput.file")) else None
+  private val debugOutputConsole = if (debugEnabled && config.hasPath("debugOutput.console")) 
+    config.getBoolean("debugOutput.console") else false
   
   private val producer = createKafkaProducer()
   
@@ -40,10 +49,58 @@ class KafkaSender(config: Config) {
   }
   
   /**
+   * Enregistre le contenu du batch pour déboguer (ajout)
+   */
+  private def debugBatch(batchId: Int, jsonMessages: Array[String]): Unit = {
+    if (debugEnabled) {
+      // Préparation du contenu à écrire
+      val batchHeader = s"===== BATCH #$batchId (${jsonMessages.length} messages) ====="
+      val batchContent = if (jsonMessages.nonEmpty) {
+        jsonMessages.take(5).mkString("\n").take(1000) + 
+        (if (jsonMessages.length > 5) "\n... (plus de données)" else "")
+      } else {
+        "BATCH VIDE - Aucun message à envoyer!"
+      }
+      val batchFooter = "======================================"
+      val fullContent = s"$batchHeader\n$batchContent\n$batchFooter\n\n"
+      
+      // Écrire dans la console si configuré
+      if (debugOutputConsole) {
+        println("\n" + fullContent)
+      }
+      
+      // Écrire dans un fichier si configuré
+      debugOutputFile.foreach { filePath =>
+        try {
+          val file = new File(filePath)
+          // Crée le répertoire parent si nécessaire
+          file.getParentFile.mkdirs()
+          
+          val writer = new PrintWriter(new java.io.FileWriter(file, true))
+          try {
+            writer.println(fullContent)
+          } finally {
+            writer.close()
+          }
+        } catch {
+          case e: Exception => logger.error(s"Failed to write debug output to file: ${e.getMessage}", e)
+        }
+      }
+    }
+  }
+  
+  // Compteur de batches pour le débogage (ajout)
+  private var batchCounter = 0
+  
+  /**
    * Envoie un lot de messages JSON au topic Kafka
    */
   def sendJsonMessages(jsonMessages: Array[String]): Unit = {
-    logger.info(s"Sending batch of ${jsonMessages.length} messages to topic $topic")
+    batchCounter += 1
+    logger.info(s"Sending batch #$batchCounter of ${jsonMessages.length} messages to topic $topic")
+    
+    // Déboguer le batch avant l'envoi (ajout)
+    debugBatch(batchCounter, jsonMessages)
     
     var successCount = 0
     var failureCount = 0
@@ -66,12 +123,10 @@ class KafkaSender(config: Config) {
     }
     
     producer.flush()
-    logger.info(s"Batch transmission complete. Successful: $successCount, Failed: $failureCount")
+    logger.info(s"Batch #$batchCounter transmission complete. Successful: $successCount, Failed: $failureCount")
   }
   
-  /**
-   * Ferme proprement la connexion au producteur Kafka
-   */
+
   def closeConnection(): Unit = {
     logger.info("Closing Kafka producer connection")
     producer.close()

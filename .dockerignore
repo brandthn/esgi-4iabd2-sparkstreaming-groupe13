@@ -1,0 +1,13 @@
+# ignore SBT and IDE caches
+.bloop
+.metals
+.vscode
+target
+logs
+
+# data is volume‑mounted, not baked into the image
+data
+
+# ignore anything else you don’t need in the container
+README.md
+docker-compose.yml

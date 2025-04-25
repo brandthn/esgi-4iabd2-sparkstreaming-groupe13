@@ -8,6 +8,10 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % "3.3.2",
   "org.apache.spark" %% "spark-sql" % "3.3.2",
   
+  // Spark Streaming - AJOUTEZ CES DEUX LIGNES
+  "org.apache.spark" %% "spark-streaming" % "3.3.2",
+  "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.3.2",
+  
   // Kafka
   "org.apache.kafka" % "kafka-clients" % "3.3.1",
   

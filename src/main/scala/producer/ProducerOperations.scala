@@ -1,5 +1,7 @@
 package producer
 
+import java.io.File
+
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
@@ -41,10 +43,20 @@ class ProducerOperations(spark: SparkSession, config: Config) {
   ))
   
   /**
-   * Charge le fichier CSV sans trier, en utilisant un schéma prédéfini
+   * Charge le fichier CSV sans trier, en utilisant schéma prédéfini
    */
   def loadTripDataWithoutSorting(): DataFrame = {
+    // Vérifie d'abord si le fichier existe
+    val file = new File(sourceFile)
+    if (!file.exists()) {
+      logger.error(s"Le fichier source n'existe pas: $sourceFile")
+      logger.error(s"Chemin absolu attendu: ${file.getAbsolutePath}")
+      logger.error(s"Répertoire courant: ${new File(".").getAbsolutePath}")
+      throw new RuntimeException(s"Fichier source introuvable: $sourceFile")
+    }
+    
     logger.info(s"Loading taxi trip data from $sourceFile with predefined schema")
+    logger.info(s"File size: ${file.length()} bytes")
     
     val df = spark.read
       .option("header", "true")
@@ -52,7 +64,9 @@ class ProducerOperations(spark: SparkSession, config: Config) {
       .option("mode", "DROPMALFORMED")  // Ignorer les lignes mal formées
       .csv(sourceFile)
       
-    logger.info(s"Successfully loaded taxi data")
+    val count = df.count()
+    logger.info(s"Successfully loaded taxi data with $count records")
+    
     df
   }
   
