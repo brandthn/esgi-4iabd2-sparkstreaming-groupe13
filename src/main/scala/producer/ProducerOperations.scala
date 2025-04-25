@@ -6,18 +6,12 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.slf4j.LoggerFactory
 
-/**
- * Gère le chargement, le tri et la préparation des données de taxi
- */
 class ProducerOperations(spark: SparkSession, config: Config) {
   private val logger = LoggerFactory.getLogger(getClass)
   private val sourceFile = config.getConfig("data").getString("sourceFile")
   
   import spark.implicits._
   
-  /**
-   * Définit le schéma du fichier CSV pour éviter l'inférence de schéma (économise la mémoire)
-   */
   private val tripSchema = StructType(Array(
     StructField("VendorID", IntegerType, true),
     StructField("tpep_pickup_datetime", TimestampType, true),
@@ -64,10 +58,6 @@ class ProducerOperations(spark: SparkSession, config: Config) {
     df.orderBy(col("tpep_pickup_datetime"))
   }
   
-  /**
-   * Charge le fichier CSV des données de taxi et trie par heure de prise en charge
-   * Cette méthode reste pour compatibilité
-   */
   def loadAndSortTripData(): DataFrame = {
     logger.info(s"Loading and sorting taxi trip data from $sourceFile")
     
@@ -88,11 +78,7 @@ class ProducerOperations(spark: SparkSession, config: Config) {
     logger.info("Converting batch to JSON format")
     df.toJSON.collect()
   }
-  
-  /**
-   * Divise le DataFrame en batches de taille spécifiée
-   * Utilise une approche plus optimisée pour consommer moins de mémoire
-   */
+
   def createDataBatches(df: DataFrame, batchSize: Int): Array[DataFrame] = {
     // Obtenir le nombre total d'enregistrements (peut être coûteux mais nécessaire)
     logger.info("Calculating total record count")
@@ -101,16 +87,14 @@ class ProducerOperations(spark: SparkSession, config: Config) {
     
     logger.info(s"Dividing data into $batchCount batches of approximately $batchSize records each")
     
-    // Partitionner le dataframe
     (0 until batchCount).map { i =>
       val start = i * batchSize
       val end = Math.min((i + 1) * batchSize, recordCount)
       
-      // Approche plus efficace pour les grands datasets
       df.limit(end).filter { row =>
-        val rowNumber = row.getAs[Int]("VendorID")  // Utiliser un champ existant comme approximation
+        val rowNumber = row.getAs[Int]("VendorID")
         rowNumber >= start
-      }.persist()  // Persister pour optimiser les opérations suivantes
+      }.persist()
     }.toArray
   }
 }
