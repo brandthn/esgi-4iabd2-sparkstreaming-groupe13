@@ -10,7 +10,7 @@ __git clone https://github.com/brandthn/esgi-4iabd2-sparkstreaming-groupe13.git_
 ### II. Build les images et lancer containers de Docker:
 - Commandes Docker depuis la racine :
 
-    -  __docker-compose up --build__
+    -  `docker-compose up --build`
 
 ### Assurez-vous que les répertoires nécessaires existent:
-__mkdir -p data/streaming data/processed/raw data/processed/pickup_agg data/processed/dropoff_agg data/processed/combined_agg data/processed/checkpoints/raw data/debug__ (depuis la racine du projet)
+`mkdir -p data/streaming data/processed/raw data/processed/pickup_agg data/processed/dropoff_agg data/processed/combined_agg data/processed/checkpoints/raw data/debug` (depuis la racine du projet)
