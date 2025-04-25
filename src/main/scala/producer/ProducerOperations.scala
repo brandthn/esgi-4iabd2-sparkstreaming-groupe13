@@ -1,15 +1,15 @@
 package producer
 
-import java.io.File
-
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.slf4j.LoggerFactory
 
+import java.io.File
+
 /**
- * Gère le chargement, le tri et la préparation des données de taxi
+ * Gère le chargement et la préparation des données de taxi
  */
 class ProducerOperations(spark: SparkSession, config: Config) {
   private val logger = LoggerFactory.getLogger(getClass)
@@ -18,7 +18,7 @@ class ProducerOperations(spark: SparkSession, config: Config) {
   import spark.implicits._
   
   /**
-   * Définit le schéma du fichier CSV pour éviter l'inférence de schéma (économise la mémoire)
+   * Définit le schéma du fichier CSV pour éviter l'inférence de schéma
    */
   private val tripSchema = StructType(Array(
     StructField("VendorID", IntegerType, true),
@@ -43,10 +43,10 @@ class ProducerOperations(spark: SparkSession, config: Config) {
   ))
   
   /**
-   * Charge le fichier CSV sans trier, en utilisant schéma prédéfini
+   * Charge le fichier CSV en utilisant un schéma prédéfini avec des options optimisées
    */
-  def loadTripDataWithoutSorting(): DataFrame = {
-    // Vérifie d'abord si le fichier existe
+  def loadTripData(): DataFrame = {
+    // Vérifier si le fichier existe
     val file = new File(sourceFile)
     if (!file.exists()) {
       logger.error(s"Le fichier source n'existe pas: $sourceFile")
@@ -55,76 +55,138 @@ class ProducerOperations(spark: SparkSession, config: Config) {
       throw new RuntimeException(s"Fichier source introuvable: $sourceFile")
     }
     
-    logger.info(s"Loading taxi trip data from $sourceFile with predefined schema")
-    logger.info(s"File size: ${file.length()} bytes")
+    logger.info(s"Chargement des données depuis $sourceFile")
+    logger.info(s"Taille du fichier: ${file.length()} bytes")
     
-    val df = spark.read
-      .option("header", "true")
-      .schema(tripSchema)  // Utiliser un schéma prédéfini au lieu d'inférer
-      .option("mode", "DROPMALFORMED")  // Ignorer les lignes mal formées
-      .csv(sourceFile)
+    // Lire les 5 premières lignes du fichier pour vérifier le format
+    try {
+      import scala.io.Source
+      val bufferedSource = Source.fromFile(file)
+      val lines = bufferedSource.getLines().take(5).toList
+      bufferedSource.close()
       
-    val count = df.count()
-    logger.info(s"Successfully loaded taxi data with $count records")
+      logger.info("Aperçu des premières lignes du fichier CSV:")
+      lines.foreach(line => logger.info(line))
+    } catch {
+      case e: Exception => logger.warn(s"Impossible de lire l'aperçu du fichier: ${e.getMessage}")
+    }
     
-    df
-  }
-  
-  /**
-   * Trie un DataFrame par heure de prise en charge
-   */
-  def sortDataFrame(df: DataFrame): DataFrame = {
-    logger.info("Sorting data by pickup datetime")
-    df.orderBy(col("tpep_pickup_datetime"))
-  }
-  
-  /**
-   * Charge le fichier CSV des données de taxi et trie par heure de prise en charge
-   * Cette méthode reste pour compatibilité
-   */
-  def loadAndSortTripData(): DataFrame = {
-    logger.info(s"Loading and sorting taxi trip data from $sourceFile")
-    
+    // Options avancées de lecture CSV
     val df = spark.read
       .option("header", "true")
-      .schema(tripSchema)  // Utiliser un schéma prédéfini
+      .option("sep", ",")
+      .option("quote", "\"")
+      .option("escape", "\"")
+      .option("dateFormat", "yyyy-MM-dd HH:mm:ss")
+      .option("mode", "PERMISSIVE") // Plus permissif pour les données mal formées
+      .option("nullValue", "")
+      .option("timestampFormat", "yyyy-MM-dd HH:mm:ss")
+      .schema(tripSchema)
       .csv(sourceFile)
-      .orderBy(col("tpep_pickup_datetime"))
     
-    logger.info(s"Successfully loaded data")
-    df
+    // Afficher un aperçu du DataFrame
+    try {
+      val sample = df.limit(2).collect()
+      if (sample.nonEmpty) {
+        logger.info(s"Aperçu du premier enregistrement: ${sample(0)}")
+        logger.info(s"Schéma du DataFrame: ${df.schema}")
+      } else {
+        logger.warn("Aucun enregistrement trouvé dans le DataFrame")
+      }
+    } catch {
+      case e: Exception => logger.warn(s"Impossible d'afficher l'aperçu: ${e.getMessage}")
+    }
+    
+    val count = df.count()
+    logger.info(s"Données chargées avec succès: $count enregistrements")
+    
+    // Vérifier que le DataFrame contient des données réelles
+    val columnCount = df.columns.length
+    logger.info(s"Nombre de colonnes: $columnCount (attendu: 19)")
+    
+    if (count > 0) {
+      // Trier les données par heure de prise en charge et retourner le DataFrame
+      val sortedDf = df.orderBy(col("tpep_pickup_datetime"))
+      
+      // Enregistrer quelques exemples pour le débogage
+      try {
+        val exampleRows = sortedDf.limit(5).collect()
+        logger.info(s"Exemples de lignes triées (${exampleRows.length}):")
+        exampleRows.foreach(row => logger.info(row.toString()))
+      } catch {
+        case e: Exception => logger.warn(s"Impossible d'afficher des exemples: ${e.getMessage}")
+      }
+      
+      sortedDf
+    } else {
+      logger.error("Le DataFrame est vide après chargement!")
+      df // Retourner le DataFrame vide quand même
+    }
   }
   
   /**
-   * Convertit un batch de données DataFrame en tableau de chaînes JSON
+   * Extrait un lot de N lignes à partir de la position spécifiée
+   * en utilisant une approche plus directe avec row_number
+   */
+  def extractBatch(df: DataFrame, startIndex: Int, batchSize: Int): DataFrame = {
+    logger.info(s"Extraction du batch à partir de l'index $startIndex, taille $batchSize")
+    
+    import org.apache.spark.sql.expressions.Window
+    import org.apache.spark.sql.functions._
+    
+    // Ajouter un numéro de ligne au DataFrame
+    val windowSpec = Window.orderBy("tpep_pickup_datetime")
+    val dfWithRowNum = df.withColumn("row_num", row_number().over(windowSpec))
+    
+    // Sélectionner uniquement les lignes dans l'intervalle spécifié
+    val result = dfWithRowNum.filter(col("row_num").between(startIndex + 1, startIndex + batchSize))
+      .drop("row_num")
+    
+    // Afficher le nombre de lignes pour vérification
+    val count = result.count()
+    logger.info(s"Batch extrait avec $count lignes")
+    
+    result
+  }
+  
+  /**
+   * Convertit un batch de données en tableau de chaînes JSON
+   * Cette méthode est conservée pour compatibilité, mais nous préférons
+   * utiliser collect().map(_.json) directement
    */
   def convertBatchToJson(df: DataFrame): Array[String] = {
-    logger.info("Converting batch to JSON format")
-    df.toJSON.collect()
-  }
-  
-  /**
-   * Divise le DataFrame en batches de taille spécifiée
-   * Utilise une approche plus optimisée pour consommer moins de mémoire
-   */
-  def createDataBatches(df: DataFrame, batchSize: Int): Array[DataFrame] = {
-    // Obtenir le nombre total d'enregistrements (peut être coûteux mais nécessaire)
-    logger.info("Calculating total record count")
-    val recordCount = df.count().toInt
-    val batchCount = Math.ceil(recordCount.toDouble / batchSize).toInt
+    if (df.isEmpty) {
+      logger.warn("DataFrame vide, aucune conversion nécessaire")
+      return Array.empty[String]
+    }
     
-    logger.info(s"Dividing data into $batchCount batches of approximately $batchSize records each")
-    
-    // Partitionner le dataframe
-    (0 until batchCount).map { i =>
-      val start = i * batchSize
-      val end = Math.min((i + 1) * batchSize, recordCount)
+    logger.info(s"Conversion du batch en format JSON")
+    try {
+      // Action forcée pour voir le nombre d'enregistrements
+      val count = df.count()
+      logger.info(s"Tentative de conversion de $count enregistrements en JSON")
       
-      // Approche plus efficace pour les grands datasets
-      df.limit(end).filter { row =>
-        val rowNumber = row.getAs[Int]("VendorID")  // Utiliser un champ existant comme approximation
-        rowNumber >= start
-      }.persist()  // Persister pour optimiser les opérations suivantes
-    }.toArray
+      if (count == 0) {
+        return Array.empty[String]
+      }
+      
+      // Échantillon pour vérifier le contenu
+      val sample = df.limit(1).collect()
+      if (sample.isEmpty) {
+        logger.warn("Échantillon vide malgré count > 0, problème possible avec le DataFrame")
+        return Array.empty[String]
+      }
+      
+      logger.info(s"Échantillon: ${sample(0).toString}")
+      
+      // Convertir en JSON
+      val jsonArray = df.toJSON.collect()
+      logger.info(s"Batch converti avec ${jsonArray.length} messages")
+      jsonArray
+    } catch {
+      case e: Exception =>
+        logger.error(s"Erreur lors de la conversion en JSON: ${e.getMessage}", e)
+        Array.empty[String]
+    }
   }
 }

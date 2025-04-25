@@ -41,11 +41,11 @@ object MainConsumer {
     
     try {
       // Initialiser les composants
-      val kafkaReader = new KafkaReader(spark, consumerConfig)
+      val fileReader = new FileReader(spark, consumerConfig)
       val streamProcessor = new StreamProcessor(spark, consumerConfig)
       
-      // Créer le stream depuis Kafka
-      val inputStream = kafkaReader.createKafkaStream()
+      // Créer le stream depuis les fichiers
+      val inputStream = fileReader.createFileStream()
       
       // Démarrer le traitement du stream
       val query = streamProcessor.processStream(inputStream)

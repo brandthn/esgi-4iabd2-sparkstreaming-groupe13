@@ -1,13 +1,14 @@
 package producer
 
 import com.typesafe.config.{Config, ConfigFactory}
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
 
-import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
-
+import java.io.{File, PrintWriter}
+import java.time.LocalDateTime
 
 object MainProducer {
   private val logger = LoggerFactory.getLogger(getClass)
@@ -18,70 +19,120 @@ object MainProducer {
     val taxiConfig = config.getConfig("taxi.producer")
     
     // Extraire les paramètres de configuration
-    val sourceFile = taxiConfig.getConfig("data").getString("sourceFile")
     val batchSize = taxiConfig.getConfig("data").getInt("batchSize")
     val intervalSeconds = taxiConfig.getConfig("data").getInt("intervalSeconds")
     
-    logger.info(s"Initializing Yellow Taxi Trip Producer with source: $sourceFile, " +
-                s"batch size: $batchSize, interval: $intervalSeconds seconds")
+    logger.info(s"Initialisation du Producer de trajets de taxi avec " +
+                s"taille de batch: $batchSize, intervalle: $intervalSeconds secondes")
     
+    // Créer la session Spark avec une configuration optimisée pour la mémoire
     val spark = SparkSession.builder()
       .appName("YellowTaxiTripProducer")
       .master("local[*]")
-      .config("spark.ui.enabled", "false")  // Désactiver l'UI Spark
-      .config("spark.sql.shuffle.partitions", "10")  // Réduire les partitions pour éviter trop de mémoire
-      .config("spark.memory.fraction", "0.7")  // Donner plus de mémoire à Spark
-      .config("spark.memory.storageFraction", "0.2")  // Réduire mémoire pour storage
+      .config("spark.ui.enabled", "false")
+      .config("spark.sql.shuffle.partitions", "2") // Réduire pour les petits jeux de données
+      .config("spark.memory.fraction", "0.7")
+      .config("spark.memory.storageFraction", "0.2")
       .getOrCreate()
     
     try {
       val dataOps = new ProducerOperations(spark, taxiConfig)
-      val kafkaSender = new KafkaSender(taxiConfig.getConfig("kafka"))
       
-      logger.info("Processing data in batches to save memory")
+      // Configurer le FileSender pour écrire dans des fichiers
+      val fileConfig = taxiConfig.getConfig("file")
+      val fileSender = new FileSender(fileConfig)
       
-      // Définir le schéma manuellement pour éviter d'inférer le schéma (économise de la mémoire)
-      val df = dataOps.loadTripDataWithoutSorting()
+      // Déboguer le fichier CSV avant de charger les données
+      val sourceFile = taxiConfig.getConfig("data").getString("sourceFile")
+      logger.info(s"Débogage du fichier CSV source: $sourceFile")
+      CsvDebugger.debugCsvFile(sourceFile)
       
-      // Trier les données dans Spark
-      val sortedDf = dataOps.sortDataFrame(df)
+      logger.info("Chargement des données...")
       
-      // Partitionner en lots plus petits
-      val batches = dataOps.createDataBatches(sortedDf, batchSize)
+      // Charger toutes les données en une fois
+      val df = dataOps.loadTripData()
       
-      logger.info(s"Created ${batches.length} batches, beginning transmission")
+      // Vérifier que le DataFrame contient des données
+      val rowCount = df.count()
+      if (rowCount == 0) {
+        logger.error("ERREUR CRITIQUE: Le fichier CSV a été trouvé mais ne contient aucune donnée valide!")
+        logger.error("Vérifiez le format du fichier CSV et le schéma défini dans ProducerOperations.scala")
+        
+        // Créer un fichier pour indiquer qu'il y a eu un problème
+        val errorFile = new File("data/ERROR_NO_DATA_FOUND.txt")
+        val writer = new PrintWriter(errorFile)
+        try {
+          writer.println(s"Erreur lors du chargement des données: Aucune donnée valide trouvée")
+          writer.println(s"Fichier source: ${taxiConfig.getConfig("data").getString("sourceFile")}")
+          writer.println(s"Date et heure: ${LocalDateTime.now()}")
+          writer.println("Vérifiez que le fichier CSV est au bon format et que le schéma est correctement défini.")
+        } finally {
+          writer.close()
+        }
+        
+        throw new RuntimeException("Aucune donnée valide trouvée dans le fichier CSV")
+      }
       
-      // Traiter chaque lot avec délai
+      logger.info(s"Données chargées et triées avec succès: $rowCount enregistrements")
+      
+      // Traiter chaque lot avec délai - approche simplifiée
       val processingFuture = Future {
-        var counter = 0
-        batches.foreach { batch =>
-          counter += 1
-          logger.info(s"Processing batch $counter of ${batches.length}")
+        var currentPosition = 0
+        val totalRecords = df.count().toInt
+        logger.info(s"Total des enregistrements à traiter: $totalRecords")
+        
+        // Forcer l'exécution et la mise en cache des données triées
+        logger.info("Mise en cache des données pour optimiser les performances")
+        df.persist()
+        
+        // Forcer une action pour matérialiser le cache
+        val firstRow = df.first()
+        logger.info(s"Premier enregistrement chargé: ${firstRow.toString().take(100)}...")
+        
+        var batchNumber = 0
+        while (currentPosition < totalRecords) {
+          batchNumber += 1
+          logger.info(s"Traitement du batch $batchNumber, position: $currentPosition")
           
-          val jsonMessages = dataOps.convertBatchToJson(batch)
+          try {
+            // Extraire un batch de taille fixe
+            val batchDf = dataOps.extractBatch(df, currentPosition, batchSize)
+            
+            // Collecter les données à envoyer (sans passer par JSON d'abord)
+            val rows = batchDf.collect()
+            logger.info(s"Batch récupéré avec ${rows.length} lignes")
+            
+            if (rows.nonEmpty) {
+              // Convertir les lignes en JSON
+              val jsonMessages = rows.map(_.json)
+              
+              // Envoyer les messages
+              fileSender.writeJsonMessages(jsonMessages)
+            } else {
+              logger.warn(s"Batch $batchNumber est vide, aucune donnée à envoyer")
+            }
+          } catch {
+            case e: Exception => 
+              logger.error(s"Erreur lors du traitement du batch $batchNumber: ${e.getMessage}", e)
+          }
           
-          kafkaSender.sendJsonMessages(jsonMessages)
+          // Avancer à la position suivante
+          currentPosition += batchSize
           
-          // Nettoyage explicite pour libérer la mémoire
-          batch.unpersist()
-          
-          // Attendre l'intervalle configuré avant le prochain lot
-          if (counter < batches.length) {
-            logger.info(s"Waiting $intervalSeconds seconds before next batch")
+          // Attendre avant le traitement du prochain lot
+          if (currentPosition < totalRecords) {
+            logger.info(s"Attente de $intervalSeconds secondes avant le prochain batch")
             Thread.sleep(intervalSeconds * 1000)
           }
         }
       }
       
       Await.result(processingFuture, Duration.Inf)
-      
-      // Nettoyage
-      kafkaSender.closeConnection()
-      logger.info("Data streaming completed successfully")
+      logger.info("Streaming de données terminé avec succès")
       
     } catch {
       case e: Exception =>
-        logger.error(s"An error occurred during execution: ${e.getMessage}", e)
+        logger.error(s"Une erreur s'est produite: ${e.getMessage}", e)
         System.exit(1)
     } finally {
       spark.stop()

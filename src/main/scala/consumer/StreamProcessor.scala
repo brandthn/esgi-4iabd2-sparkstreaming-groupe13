@@ -24,6 +24,9 @@ class StreamProcessor(spark: SparkSession, config: Config) {
   private val outputDir = outputConfig.getString("directory")
   private val outputFormat = outputConfig.getString("format")
   
+  // Configuration pour le trigger
+  private val batchInterval = config.getConfig("spark").getInt("batchIntervalSeconds")
+  
   /**
    * Ajoute un timestamp de traitement pour suivre quand un batch a été traité
    */
@@ -94,8 +97,17 @@ class StreamProcessor(spark: SparkSession, config: Config) {
     // Ajouter le timestamp et l'ID de batch
     val streamWithMetadata = addProcessingTimeColumns(inputStream)
     
+    // Vérifier et gérer les valeurs null potentielles dans les dates
+    val streamWithFixedDates = streamWithMetadata
+      .withColumn("tpep_pickup_datetime", 
+                 when(col("tpep_pickup_datetime").isNull, current_timestamp())
+                 .otherwise(col("tpep_pickup_datetime")))
+      .withColumn("tpep_dropoff_datetime", 
+                 when(col("tpep_dropoff_datetime").isNull, current_timestamp())
+                 .otherwise(col("tpep_dropoff_datetime")))
+    
     // Créer une vue temporaire pour pouvoir référencer le stream dans SQL
-    streamWithMetadata.createOrReplaceTempView("taxi_trips")
+    streamWithFixedDates.createOrReplaceTempView("taxi_trips")
     
     // Query de base: juste visualiser les données brutes
     val rawDataQuery = """
@@ -123,60 +135,74 @@ class StreamProcessor(spark: SparkSession, config: Config) {
         Files.createDirectories(Paths.get(outputDir))
       }
       
+      // S'assurer que les sous-répertoires existent
+      val directories = Array("raw", "pickup_agg", "dropoff_agg", "combined_agg", "checkpoints/raw")
+      directories.foreach { dir =>
+        val path = Paths.get(s"$outputDir/$dir")
+        if (!Files.exists(path)) {
+          Files.createDirectories(path)
+        }
+      }
+      
       // Écrire les agrégations
       val query = rawData.writeStream
         .outputMode(OutputMode.Append())
         .format(outputFormat)
         .option("path", s"$outputDir/raw")
         .option("checkpointLocation", s"$outputDir/checkpoints/raw")
-        .trigger(Trigger.ProcessingTime("10 seconds"))
+        .trigger(Trigger.ProcessingTime(s"$batchInterval seconds"))
         .foreachBatch { (batchDF: DataFrame, batchId: Long) =>
           logger.info(s"Processing batch $batchId")
           
-          // Écrire les données brutes
-          batchDF
-            .write
-            .format(outputFormat)
-            .mode("append")
-            .save(s"$outputDir/raw")
-          
-          // Aggréger par lieu de prise en charge
-          val pickupAgg = aggregateByPickupLocation(batchDF)
-          pickupAgg
-            .write
-            .format(outputFormat)
-            .mode("append")
-            .save(s"$outputDir/pickup_agg")
-          
-          // Aggréger par lieu de dépose
-          val dropoffAgg = aggregateByDropoffLocation(batchDF)
-          dropoffAgg
-            .write
-            .format(outputFormat)
-            .mode("append")
-            .save(s"$outputDir/dropoff_agg")
-          
-          // Combinaison pour visualisation facile
-          val combinedAgg = combineAggregations(pickupAgg, dropoffAgg)
-          combinedAgg
-            .write
-            .format(outputFormat)
-            .mode("append")
-            .save(s"$outputDir/combined_agg")
+          if (batchDF.isEmpty) {
+            logger.info(s"Batch $batchId is empty, nothing to process")
+            // Ne pas utiliser return ici, car cela retourne Unit
+          } else {
+            // Écrire les données brutes
+            batchDF
+              .write
+              .format(outputFormat)
+              .mode("append")
+              .save(s"$outputDir/raw")
             
-          // Afficher un échantillon pour le débogage
-          logger.info(s"Sample of raw data in batch $batchId:")
-          batchDF.show(5, truncate = false)
-          
-          logger.info(s"Sample of aggregated data in batch $batchId:")
-          combinedAgg.show(5, truncate = false)
+            // Aggréger par lieu de prise en charge
+            val pickupAgg = aggregateByPickupLocation(batchDF)
+            pickupAgg
+              .write
+              .format(outputFormat)
+              .mode("append")
+              .save(s"$outputDir/pickup_agg")
+            
+            // Aggréger par lieu de dépose
+            val dropoffAgg = aggregateByDropoffLocation(batchDF)
+            dropoffAgg
+              .write
+              .format(outputFormat)
+              .mode("append")
+              .save(s"$outputDir/dropoff_agg")
+            
+            // Combinaison pour visualisation facile
+            val combinedAgg = combineAggregations(pickupAgg, dropoffAgg)
+            combinedAgg
+              .write
+              .format(outputFormat)
+              .mode("append")
+              .save(s"$outputDir/combined_agg")
+              
+            // Afficher un échantillon pour le débogage
+            logger.info(s"Sample of raw data in batch $batchId:")
+            batchDF.show(5, truncate = false)
+            
+            logger.info(s"Sample of aggregated data in batch $batchId:")
+            combinedAgg.show(5, truncate = false)
+          }
         }
         .start()
         
       logger.info("Stream processing started")
       query
     } else {
-      logger.info("Output is disabled, not writing to disk")
+      logger.info("Output is disabled, only showing data in console")
       rawData.writeStream
         .format("console")
         .outputMode("append")
