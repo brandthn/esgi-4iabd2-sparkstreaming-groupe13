@@ -12,19 +12,19 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * StreamProcessor effectue les transformations sur les données de streaming
+ * StreamProcessor effectue transformations sur données de streaming
  * et écrit les résultats pour la visualisation
  */
 class StreamProcessor(spark: SparkSession, config: Config) {
   private val logger = LoggerFactory.getLogger(getClass)
   
-  // Configuration de sortie
+  // Configuration sortie sortie batch
   private val outputConfig = config.getConfig("output")
   private val outputEnabled = outputConfig.getBoolean("enabled")
   private val outputDir = outputConfig.getString("directory")
   private val outputFormat = outputConfig.getString("format")
   
-  // Configuration pour le trigger
+  // Configuration trigger pour interval
   private val batchInterval = config.getConfig("spark").getInt("batchIntervalSeconds")
   
   /**
@@ -189,7 +189,6 @@ class StreamProcessor(spark: SparkSession, config: Config) {
               .mode("append")
               .save(s"$outputDir/combined_agg")
               
-            // Afficher un échantillon pour le débogage
             logger.info(s"Sample of raw data in batch $batchId:")
             batchDF.show(5, truncate = false)
             

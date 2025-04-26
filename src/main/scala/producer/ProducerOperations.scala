@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory
 import java.io.File
 
 /**
- * Gère le chargement et la préparation des données de taxi
+ * ProducerOperation: chargement et la préparation des données de taxi
  */
 class ProducerOperations(spark: SparkSession, config: Config) {
   private val logger = LoggerFactory.getLogger(getClass)
@@ -46,7 +46,7 @@ class ProducerOperations(spark: SparkSession, config: Config) {
    * Charge le fichier CSV en utilisant un schéma prédéfini avec des options optimisées
    */
   def loadTripData(): DataFrame = {
-    // Vérifier si le fichier existe
+    // Vérifie si le fichier existe
     val file = new File(sourceFile)
     if (!file.exists()) {
       logger.error(s"Le fichier source n'existe pas: $sourceFile")

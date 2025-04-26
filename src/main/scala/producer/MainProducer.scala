@@ -14,7 +14,7 @@ object MainProducer {
   private val logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
-    // Charger la configuration
+    // Charger les configurations depuis fichier de configuration `src/main/resources/application.conf`
     val config = ConfigFactory.load()
     val taxiConfig = config.getConfig("taxi.producer")
     
@@ -25,7 +25,7 @@ object MainProducer {
     logger.info(s"Initialisation du Producer de trajets de taxi avec " +
                 s"taille de batch: $batchSize, intervalle: $intervalSeconds secondes")
     
-    // Créer la session Spark avec une configuration optimisée pour la mémoire
+    // session Spark avec configuration pour la mémoire
     val spark = SparkSession.builder()
       .appName("YellowTaxiTripProducer")
       .master("local[*]")
@@ -39,13 +39,12 @@ object MainProducer {
       val dataOps = new ProducerOperations(spark, taxiConfig)
       
       // Configurer le FileSender pour écrire dans des fichiers
-      val fileConfig = taxiConfig.getConfig("file")
+      val fileConfig = taxiConfig.getConfig("file") // outputDir (Répertoire où écrire les fichiers JSON) et filePrefix (Préfixe pour les noms de fichiers)
       val fileSender = new FileSender(fileConfig)
       
-      // Déboguer le fichier CSV avant de charger les données
       val sourceFile = taxiConfig.getConfig("data").getString("sourceFile")
-      logger.info(s"Débogage du fichier CSV source: $sourceFile")
-      CsvDebugger.debugCsvFile(sourceFile)
+      //logger.info(s"Débogage du fichier CSV source: $sourceFile")
+      // CsvDebugger.debugCsvFile(sourceFile)
       
       logger.info("Chargement des données...")
       

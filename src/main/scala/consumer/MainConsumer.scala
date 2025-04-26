@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory
 
 /**
  * Point d'entrée principal pour le Consumer Spark Streaming
- * Responsable de l'initialisation et l'orchestration du traitement en streaming
+ * Ce fichier s'occupe de l'initialisation et l'orchestration du traitement en streaming => focus workflow streaming
  */
 object MainConsumer {
   private val logger = LoggerFactory.getLogger(getClass)
@@ -28,7 +28,7 @@ object MainConsumer {
                 s"batch interval: $batchInterval seconds, " +
                 s"shuffle partitions: $shufflePartitions")
     
-    // Créer la session Spark
+    // CRéation session Spark
     val spark = SparkSession.builder()
       .appName(appName)
       .master("local[*]")
@@ -40,11 +40,11 @@ object MainConsumer {
     spark.sparkContext.setLogLevel("WARN")
     
     try {
-      // Initialiser les composants
+      // Initialiser composants
       val fileReader = new FileReader(spark, consumerConfig)
       val streamProcessor = new StreamProcessor(spark, consumerConfig)
       
-      // Créer le stream depuis les fichiers
+      // Créer stream depuis les fichiers 
       val inputStream = fileReader.createFileStream()
       
       // Démarrer le traitement du stream
