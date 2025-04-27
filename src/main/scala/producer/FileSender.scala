@@ -82,7 +82,7 @@ class FileSender(config: Config) {
     if (jsonMessages.isEmpty) {
       logger.warn("Batch vide, aucune écriture nécessaire")
       
-      // Pour faciliter le débogage, créons un fichier vide avec un message
+      // Pour faciliter le débogage, créer un fichier vide avec un message
       val outputDirectory = new File(outputDir)
       if (!outputDirectory.exists()) {
         outputDirectory.mkdirs()

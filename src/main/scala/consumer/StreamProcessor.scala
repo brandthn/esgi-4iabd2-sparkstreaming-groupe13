@@ -47,10 +47,7 @@ class StreamProcessor(spark: SparkSession, config: Config) {
     val aggregatedByPickup = streamDF
       .groupBy("PULocationID", "batch_id")
       .agg(
-        count("*").as("trip_count"),
-        sum("fare_amount").as("total_fare"),
-        avg("trip_distance").as("avg_distance"),
-        sum("passenger_count").as("total_passengers")
+        count("*").as("trip_count")
       )
       .withColumn("aggregation_type", lit("pickup_location"))
     
@@ -66,10 +63,7 @@ class StreamProcessor(spark: SparkSession, config: Config) {
     val aggregatedByDropoff = streamDF
       .groupBy("DOLocationID", "batch_id")
       .agg(
-        count("*").as("trip_count"),
-        sum("fare_amount").as("total_fare"),
-        avg("trip_distance").as("avg_distance"),
-        sum("passenger_count").as("total_passengers")
+        count("*").as("trip_count")
       )
       .withColumn("aggregation_type", lit("dropoff_location"))
     
@@ -109,7 +103,7 @@ class StreamProcessor(spark: SparkSession, config: Config) {
     // Créer une vue temporaire pour pouvoir référencer le stream dans SQL
     streamWithFixedDates.createOrReplaceTempView("taxi_trips")
     
-    // Query de base: juste visualiser les données brutes
+    // Query: juste visualiser les données brutes
     val rawDataQuery = """
       SELECT 
         batch_id, 

@@ -67,14 +67,14 @@ def format_timestamp(ts):
     except:
         return str(ts)
 
-# Interface utilisateur Streamlit
+# UI Streamlit
 st.set_page_config(
     page_title="Tableau de bord des taxis en temps réel",
     page_icon="🚕",
     layout="wide"
 )
 
-st.title("🚕 Tableau de bord des taxis jaunes NYC en temps réel")
+st.title("🚕 Tableau de bord des taxis jaunes NYC en temps réel - Groupe 13")
 
 # Informations sur les derniers batchs
 st.sidebar.header("Informations sur les batchs")
@@ -116,10 +116,10 @@ if os.path.exists(debug_file):
     
     st.sidebar.text_area("Derniers batchs envoyés", debug_content, height=200)
 
-# Ajouter une case à cocher pour le rafraîchissement automatique
+# Ajouter case à cocher pour rafraîchissement automatique
 auto_refresh = st.sidebar.checkbox("Rafraîchissement automatique", value=True)
 
-# Ajouter un bouton de rafraîchissement manuel
+# Ajouter bouton de rafraîchissement manuel
 if st.button("Rafraîchir les données"):
     st.rerun()
 
@@ -199,33 +199,6 @@ with col2:
                 st.warning("Format des données d'agrégation inattendu.")
         else:
             st.info("Aucune donnée d'agrégation disponible pour les lieux de dépose.")
-
-# Statistiques générales
-st.header("📈 Statistiques générales")
-
-# Créer des colonnes pour les statistiques
-stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
-
-# Calculer les statistiques si les données sont disponibles
-if not raw_data.empty:
-    with stat_col1:
-        total_trips = len(raw_data)
-        st.metric("Total des trajets", total_trips)
-        
-    with stat_col2:
-        if 'fare_amount' in raw_data.columns:
-            avg_fare = round(raw_data['fare_amount'].mean(), 2)
-            st.metric("Tarif moyen ($)", avg_fare)
-            
-    with stat_col3:
-        if 'trip_distance' in raw_data.columns:
-            avg_distance = round(raw_data['trip_distance'].mean(), 2)
-            st.metric("Distance moyenne (miles)", avg_distance)
-            
-    with stat_col4:
-        if 'passenger_count' in raw_data.columns:
-            total_passengers = int(raw_data['passenger_count'].sum())
-            st.metric("Total des passagers", total_passengers)
 
 # Rafraîchissement automatique
 if auto_refresh:

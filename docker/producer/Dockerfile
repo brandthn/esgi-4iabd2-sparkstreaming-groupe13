@@ -26,6 +26,5 @@ RUN mkdir -p data/debug
 # Compiler le code
 RUN sbt compile
 
-# Exécuter le Producer avec la syntaxe correcte
 CMD ["sh", "-c", "sbt --batch \"runMain producer.MainProducer\""]
 # CMD ["sbt", "runMain", "producer.MainProducer"]

@@ -55,8 +55,7 @@ object MainProducer {
       val rowCount = df.count()
       if (rowCount == 0) {
         logger.error("ERREUR CRITIQUE: Le fichier CSV a été trouvé mais ne contient aucune donnée valide!")
-        logger.error("Vérifiez le format du fichier CSV et le schéma défini dans ProducerOperations.scala")
-        
+                
         // Créer un fichier pour indiquer qu'il y a eu un problème
         val errorFile = new File("data/ERROR_NO_DATA_FOUND.txt")
         val writer = new PrintWriter(errorFile)
@@ -80,11 +79,9 @@ object MainProducer {
         val totalRecords = df.count().toInt
         logger.info(s"Total des enregistrements à traiter: $totalRecords")
         
-        // Forcer l'exécution et la mise en cache des données triées
         logger.info("Mise en cache des données pour optimiser les performances")
         df.persist()
         
-        // Forcer une action pour matérialiser le cache
         val firstRow = df.first()
         logger.info(s"Premier enregistrement chargé: ${firstRow.toString().take(100)}...")
         
@@ -115,7 +112,7 @@ object MainProducer {
               logger.error(s"Erreur lors du traitement du batch $batchNumber: ${e.getMessage}", e)
           }
           
-          // Avancer à la position suivante
+          // position suivante
           currentPosition += batchSize
           
           // Attendre avant le traitement du prochain lot

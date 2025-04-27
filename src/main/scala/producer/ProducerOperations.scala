@@ -18,7 +18,7 @@ class ProducerOperations(spark: SparkSession, config: Config) {
   import spark.implicits._
   
   /**
-   * Définit le schéma du fichier CSV pour éviter l'inférence de schéma
+   * Définit schéma du fichier CSV pour éviter l'inférence de schéma (économise ressources et améliore performance de lecture)
    */
   private val tripSchema = StructType(Array(
     StructField("VendorID", IntegerType, true),
@@ -43,10 +43,10 @@ class ProducerOperations(spark: SparkSession, config: Config) {
   ))
   
   /**
-   * Charge le fichier CSV en utilisant un schéma prédéfini avec des options optimisées
+   * Chargement fichier CSV avec schéma prédéfini et options optimisées
    */
   def loadTripData(): DataFrame = {
-    // Vérifie si le fichier existe
+    // Vérification si fichier existe
     val file = new File(sourceFile)
     if (!file.exists()) {
       logger.error(s"Le fichier source n'existe pas: $sourceFile")
@@ -58,7 +58,7 @@ class ProducerOperations(spark: SparkSession, config: Config) {
     logger.info(s"Chargement des données depuis $sourceFile")
     logger.info(s"Taille du fichier: ${file.length()} bytes")
     
-    // Lire les 5 premières lignes du fichier pour vérifier le format
+    // Lire les 5 premières lignes du fichier pour vérifier le format (debug)
     try {
       import scala.io.Source
       val bufferedSource = Source.fromFile(file)
@@ -84,7 +84,7 @@ class ProducerOperations(spark: SparkSession, config: Config) {
       .schema(tripSchema)
       .csv(sourceFile)
     
-    // Afficher un aperçu du DataFrame
+    // Afficher aperçu du DataFrame
     try {
       val sample = df.limit(2).collect()
       if (sample.nonEmpty) {
@@ -126,7 +126,7 @@ class ProducerOperations(spark: SparkSession, config: Config) {
   
   /**
    * Extrait un lot de N lignes à partir de la position spécifiée
-   * en utilisant une approche plus directe avec row_number
+   * en utilisant une approche avec row_number
    */
   def extractBatch(df: DataFrame, startIndex: Int, batchSize: Int): DataFrame = {
     logger.info(s"Extraction du batch à partir de l'index $startIndex, taille $batchSize")
@@ -134,7 +134,7 @@ class ProducerOperations(spark: SparkSession, config: Config) {
     import org.apache.spark.sql.expressions.Window
     import org.apache.spark.sql.functions._
     
-    // Ajouter un numéro de ligne au DataFrame
+    // Ajouter un numéro de ligne au df
     val windowSpec = Window.orderBy("tpep_pickup_datetime")
     val dfWithRowNum = df.withColumn("row_num", row_number().over(windowSpec))
     
@@ -142,18 +142,13 @@ class ProducerOperations(spark: SparkSession, config: Config) {
     val result = dfWithRowNum.filter(col("row_num").between(startIndex + 1, startIndex + batchSize))
       .drop("row_num")
     
-    // Afficher le nombre de lignes pour vérification
+    // Afficher nombre de lignes pour vérification
     val count = result.count()
     logger.info(s"Batch extrait avec $count lignes")
     
     result
   }
-  
-  /**
-   * Convertit un batch de données en tableau de chaînes JSON
-   * Cette méthode est conservée pour compatibilité, mais nous préférons
-   * utiliser collect().map(_.json) directement
-   */
+
   def convertBatchToJson(df: DataFrame): Array[String] = {
     if (df.isEmpty) {
       logger.warn("DataFrame vide, aucune conversion nécessaire")
